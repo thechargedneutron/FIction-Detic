@@ -106,7 +106,20 @@ class VisualizationDemo(object):
             else:
                 break
 
-    def run_on_video(self, video):
+    def _frame_range_from_video(self, video, start_frame, end_frame):
+        frame_counter = 0
+        while video.isOpened():
+            success, frame = video.read()
+            if success:
+                if start_frame <= frame_counter < end_frame:
+                    yield frame
+                else:
+                    yield -1  # Return -1 when outside the frame range
+                frame_counter += 1
+            else:
+                break
+
+    def run_on_video(self, video, start_frame=-1, end_frame=-1):
         """
         Visualizes predictions on frames of the input video.
 
@@ -136,9 +149,12 @@ class VisualizationDemo(object):
 
             # Converts Matplotlib RGB format to OpenCV BGR format
             vis_frame = cv2.cvtColor(vis_frame.get_image(), cv2.COLOR_RGB2BGR)
-            return vis_frame
+            return (predictions, vis_frame)
 
-        frame_gen = self._frame_from_video(video)
+        if start_frame == -1 and end_frame == -1:
+            frame_gen = self._frame_from_video(video)
+        else:
+            frame_gen = self._frame_range_from_video(video, start_frame, end_frame)
         if self.parallel:
             buffer_size = self.predictor.default_buffer_size
 
@@ -159,7 +175,10 @@ class VisualizationDemo(object):
                 yield process_predictions(frame, predictions)
         else:
             for frame in frame_gen:
-                yield process_predictions(frame, self.predictor(frame))
+                if type(frame) == int:
+                    yield (-1, -1)
+                else:
+                    yield process_predictions(frame, self.predictor(frame))
 
 
 class AsyncPredictor:

@@ -11,6 +11,7 @@ import cv2
 import tqdm
 import sys
 import mss
+import pickle
 
 from detectron2.config import get_cfg
 from detectron2.data.detection_utils import read_image
@@ -73,6 +74,9 @@ def get_parser():
     parser.add_argument("--webcam", help="Take inputs from webcam.")
     parser.add_argument("--cpu", action='store_true', help="Use CPU only.")
     parser.add_argument("--video-input", help="Path to video file.")
+    parser.add_argument("--start-frame", default=-1, help="Start frame for processing (included).")
+    parser.add_argument("--end-frame", default=-1, help="End frame for processing (excluded).")
+    parser.add_argument("--low-fps", default='store_true', help="Do low fps processing.")
     parser.add_argument(
         "--input",
         nargs="+",
@@ -202,6 +206,9 @@ if __name__ == "__main__":
                 output_fname = os.path.splitext(output_fname)[0] + file_ext
             else:
                 output_fname = args.output
+            os.makedirs(os.path.dirname(output_fname), exist_ok=True)
+            if os.path.exists(output_fname):
+                os.remove(output_fname)
             assert not os.path.isfile(output_fname), output_fname
             output_file = cv2.VideoWriter(
                 filename=output_fname,
@@ -213,7 +220,18 @@ if __name__ == "__main__":
                 isColor=True,
             )
         assert os.path.isfile(args.video_input)
-        for vis_frame in tqdm.tqdm(demo.run_on_video(video), total=num_frames):
+        args.start_frame = int(args.start_frame)
+        args.end_frame = int(args.end_frame)
+        take_name = args.video_input.split('/')[-3]
+        aria_video_name = output_fname.split('/')[-1].split('.')[0]
+        for frame_idx, (predictions, vis_frame) in tqdm.tqdm(enumerate(demo.run_on_video(video, start_frame=args.start_frame, end_frame=args.end_frame)), total=num_frames):
+            if frame_idx < args.start_frame or frame_idx >= args.end_frame or (args.low_fps and frame_idx % 6 != 0):
+                continue
+            assert type(predictions) != int and type(vis_frame) != int
+            preds_save_path = f"/path/to/Detic/predictions/{take_name}-{args.start_frame}-{args.end_frame}/{aria_video_name}/"
+            os.makedirs(preds_save_path, exist_ok=True)
+            with open(os.path.join(preds_save_path, f"{frame_idx:06}.pkl"), 'wb') as f_pred:
+                pickle.dump(predictions, f_pred)
             if args.output:
                 output_file.write(vis_frame)
             else:
